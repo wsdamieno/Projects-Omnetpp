@@ -21,10 +21,21 @@ cplusplus {{
 
 class RoutingPacket;
 
+struct NeighborPktInfo // Structure of a neighbor node
+{
+	int id;
+	int kVal;
+	double rssi;
+	double res_energy; // the residual energy of the node
+	double location[3]; // x, y and z axis of the nodes
+};
+
 
 enum VirtualRingRoutingPacket_Type
 {
-	LEACH_ROUTING_ADV_PACKET 				= 1;		
+	HELLO_WORD_PACKET								= 	0;
+	BROADCAST_PACKET 								= 	1;
+	LEACH_ROUTING_ADV_PACKET 				= 7;		
 	LEACH_ROUTING_JOIN_PACKET 				= 2;		
 	LEACH_ROUTING_TDMA_PACKET 				= 3;		
 	LEACH_ROUTING_DATA_PACKET 				= 4;		
@@ -55,3 +66,20 @@ packet VirtualRingRoutingDataAggregatedPacket extends VirtualRingRoutingPacket
 	int indivSeqNum[];
 	simtime_t indivCreationTimestamp[];
 }
+
+packet VirtualRingRoutingDscvPacket extends VirtualRingRoutingPacket
+{	
+	// string Isource;
+	// int sinkPosition;	
+	//int kValue;
+	// int currentRound;
+	// int hopNumber;
+	// double sinkRssi;
+	// double location;
+	double residual;
+	double moisture;
+	int location[3];
+	// int StringPacketKind enum (StringPacket_Type);
+	//int schedule[];	
+	// NeighborPktInfo Neighbors[];
+};

@@ -37,24 +37,43 @@ void VirtualRingRouting::startup()
 	clusterMembers.clear();
 	roundNumber=0;
 	probability = 0;
+	
 	isCH = false;
 	endFormClus = false;
 	isCt = false;
+	// Virtual ring parameters
+	sinkRssi = 0;
+	NeighborsTable.clear();
+				
+	// residualEnergy = resMgrModule->getRemainingEnergy(); // to retrieve the residual energy of the node
+	// int rand();
 
-	/*--- Node location ---*/
+	/*--- Node location --- */
 	cModule *parentParent = getParentModule()->getParentModule();
 	if (parentParent->findSubmodule("MobilityManager") != -1) {
 	  VirtualMobilityManager* mobilityModule = check_and_cast <VirtualMobilityManager*>(parentParent->
 		getSubmodule("MobilityManager"));
-	  int varX = mobilityModule->getLocation().x;
-	  int varY = mobilityModule->getLocation().y;
-	  int varZ = mobilityModule->getLocation().z;
+	  varX = mobilityModule->getLocation().x;
+	  varY = mobilityModule->getLocation().y;
+	  varZ = mobilityModule->getLocation().z;
 	  trace() << "[Location](" << varX << ", " << varY << ", " << varZ << ")";
 	}
 
+	//VirtualMobilityManager* mobilityModule = check_and_cast <VirtualMobilityManager*>(parentParent-> getSubmodule("MobilityManager"));
 	readXMLparams();
-	if(!isSink) setTimer(START_ROUND, 0);
+		
+	setTimer(DISCOVERY_ROUND, 1.0); // All the node start the World discovery even the Sink
+	/*
+	if (isSink) {
+		RingNeighborsTable.clear();
+		setTimer(HELLO_WORLD, 5.0); // sink Node sends hello word
+	} else 
+		setTimer(DISCOVERY_ROUND, 1.0);
+	*/
+	// if(!isSink) setTimer(DISCOVERY_ROUND, 0);
 
+	/* Node resource manager */ 
+	resourceModule = check_and_cast <ResourceManager*>(parentParent->getSubmodule("ResourceManager"));
 
 	/* XXX-albarc 18/07/17 Slots extra determinados por el campo de nivel de prioridad en el paquete de JOIN */
 	myPriorityLevel = par("myPriorityLevel");
@@ -192,13 +211,39 @@ void VirtualRingRouting::fromApplicationLayer(cPacket *pkt, const char *destinat
 }
 
 void VirtualRingRouting::fromMacLayer(cPacket *pkt, int macAddress, double rssi, double lqi){
-	VirtualRingRoutingPacket *netPacket = dynamic_cast <VirtualRingRoutingPacket*>(pkt);
+	VirtualRingRoutingDscvPacket *netPacket = dynamic_cast <VirtualRingRoutingDscvPacket*>(pkt);
 
 	if (!netPacket)
 		return;
 
 	switch (netPacket->getVirtualRingRoutingPacketKind()) {
-
+		
+		/* The hello world packet sent by the Sink is received */
+		case HELLO_WORD_PACKET:{ 
+			// Wake up and start the Neighbor discovery 
+			sinkRssi = rssi ;
+			trace() << "Node : " << self << " receives hello packt from : " << macAddress << "with the RSSI :  " << rssi;
+			break;	
+		}
+		
+		case BROADCAST_PACKET:{ 
+			// Build the neighbor table "Neighbors"
+			NeighborInfo neighbor;
+			neighbor.src = atoi(netPacket->getSource());
+			neighbor.rssi = rssi;
+			neighbor.residual = netPacket->getResidual();
+			neighbor.location[0] = netPacket->getLocation(0); neighbor.location[1] = netPacket->getLocation(1); neighbor.location[2] = netPacket->getLocation(2);
+			if ((atoi(netPacket->getSource()) == 0) && (self != 0 )) {
+				isSinkNeighbor = 1;
+				trace() << "Node : " << self << " is a 1-hop neighbor of the sink node ";
+			}
+			NeighborsTable.push_back(neighbor);
+			trace() << "Node : " << self << " receives hello packt from : " << atoi(netPacket->getSource()) << " with the RSSI :  " << rssi << ", and there is :" << NeighborsTable.size() << " Inside the neighbor table";
+			// double timer = uniform (15.0, 18.0);
+			// setTimer(SEND_DATA_TO_SINK, timer); // Wait few seconds in order to receive the overall request
+			break;	
+		}
+		
 		case LEACH_ROUTING_DATA_SINGLE_PACKET:{
 			string dst(netPacket->getDestination());
 			string src(netPacket->getSource());
@@ -380,9 +425,55 @@ void VirtualRingRouting::fromMacLayer(cPacket *pkt, int macAddress, double rssi,
 void VirtualRingRouting::timerFiredCallback(int index)
 {
 	switch (index) {
+		/*
+		case HELLO_WORLD:{	
+			// Sink node send hello word to nodes in order to start the discory round
+					
+			VirtualRingRoutingPacket *helloPkt = new VirtualRingRoutingPacket("Hello Word Packet, I'm the sink node", NETWORK_LAYER_PACKET);
+			
+			helloPkt->setByteLength(advPacketSize);
+			helloPkt->setVirtualRingRoutingPacketKind(HELLO_WORLD);
+			helloPkt->setSource(SELF_NETWORK_ADDRESS);
+			helloPkt->setDestination(BROADCAST_NETWORK_ADDRESS);
+			toMacLayer(helloPkt, BROADCAST_MAC_ADDRESS);
+			
+			//setTimer(HELLO_WORLD, 2.0);
+			if (getTimer(HELLO_WORLD) != 0) {
+					cancelTimer(HELLO_WORLD);
+			}	
+			break;
+		}
+		*/
+		case DISCOVERY_ROUND:{	
+			// Broadcasts hello_world packet
+			trace() << "---- The discovery Start ----";
+			// stringClusterHeadSet.clear();
+			// stringMemberFollowers.clear();
+			// ringMembers.clear();
+			VirtualRingRoutingDscvPacket *brdcstPkt = new VirtualRingRoutingDscvPacket("Broadcast initialisation Packet", NETWORK_LAYER_PACKET);
+			brdcstPkt->setByteLength(advPacketSize);
+			brdcstPkt->setVirtualRingRoutingPacketKind(BROADCAST_PACKET);
+			brdcstPkt->setSource(SELF_NETWORK_ADDRESS);
+			brdcstPkt->setDestination(BROADCAST_NETWORK_ADDRESS);
+			brdcstPkt->setResidual(resourceModule->getRemainingEnergy()); // Residual energy of the node (Must be ok)
+			brdcstPkt->setLocation(0,varX); // X Location of the node
+			brdcstPkt->setLocation(1,varY); // Y Location of the node 			
+			brdcstPkt->setLocation(2,uniform(0.0, 0.40)); // Location of the node (burial depth) randomly between the ground surface and 40cm depth
+			
+			//brdcstPkt->setLocation(uniform(0.0, 0.40)); // Location of the node (burial depth) randomly between the ground surface and 40cm depth
+			toMacLayer(brdcstPkt, BROADCAST_MAC_ADDRESS);
+			trace() << "Node " << self << " sends the broadcast packet for the neighbor discovery ";
+			trace () << "Node : " << self << " Current round " << roundNumber;
+			
+			if (getTimer(DISCOVERY_ROUND) != 0) {
+					cancelTimer(DISCOVERY_ROUND);
+			}
+			break;
+		}	
 		
-		case START_ROUND:{
-			trace() << "START_ROUND: CASE";
+		/*
+		case DISCOVERY_ROUND:{
+			trace() << "DISCOVERY_ROUND: CASE";
 			setStateRx();
 			setPowerLevel(maxPower);
 			endFormClus = false;
@@ -434,9 +525,10 @@ void VirtualRingRouting::timerFiredCallback(int index)
 			slot = 0;
 			mySlotsVector.clear();
 
-			setTimer(START_ROUND, roundLength);
+			setTimer(DISCOVERY_ROUND, roundLength);
 			break;
 		}
+		*/
 		case SEND_ADV:{	
 			trace() << "SEND_ADV: CASE";
 			VirtualRingRoutingPacket *crtlPkt = new VirtualRingRoutingPacket("ClusterHead Announcement Packet", NETWORK_LAYER_PACKET);
@@ -795,8 +887,8 @@ void VirtualRingRouting::finishSpecific() {
 		int numPriorityLevel_1_Nodes = priorityLevel_1_SourcesVector.size();
 		int numPriorityLevel_2_Nodes = priorityLevel_2_SourcesVector.size();
 		int numRegularNodes = numNodesNoSink - numPriorityLevel_1_Nodes - numPriorityLevel_2_Nodes;
-		trace() << "[LEACH] Hay un total de " << numNodesNoSink << " nodos sin contar al sink, de los que " << numPriorityLevel_1_Nodes
-			<< " son de priority level 1, " << numPriorityLevel_2_Nodes << " son de priority level 2 y " << numRegularNodes << " son regulares.";
+		/* trace() << "[LEACH] Hay un total de " << numNodesNoSink << " nodos sin contar al sink, de los que " << numPriorityLevel_1_Nodes
+			<< " son de priority level 1, " << numPriorityLevel_2_Nodes << " son de priority level 2 y " << numRegularNodes << " son regulares."; */
 
 		// Media de paquetes recibidos en el sink
 		if (numNodesNoSink > 0) {	

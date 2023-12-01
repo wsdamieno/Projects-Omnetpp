@@ -139,6 +139,12 @@ double ResourceManager::getSpentEnergy(void)
 	return (initialEnergy - remainingEnergy);
 }
 
+// Simple function to retrieve the remaining energy of a node
+double ResourceManager::getRemainingEnergy(void)
+{
+	return remainingEnergy;
+}
+
 double ResourceManager::getCPUClockDrift(void)
 {
 	Enter_Method("getCPUClockDrift(void)");

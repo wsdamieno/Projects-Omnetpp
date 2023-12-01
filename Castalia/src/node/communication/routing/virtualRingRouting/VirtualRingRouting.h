@@ -33,12 +33,32 @@
 #include "VirtualRingRoutingPacket_m.h"
 #include "ApplicationPacket_m.h"
 #include "NoMobilityManager.h"
+/* Additional */
+// #include <experimental/random>
 
+#define THRESHOLD_ENERGY 4680 // Corresponding to 25% remaining energy 
+#define MIN_RSSI -150 // The minimum value of the Rssi (node sensibility)
+#define MAX_IMAGINARY_NODE 5000 // An imaginary node iD
+/* End */
 
 using namespace std;
+// using namespace std::experimental;
+
+const int stringNP = 300;//The number of colony size (employed bees+onlooker bees)
+const int stringFoodNumber = stringNP / 2;//The number of food sources equals the half of the colony size
+const int stringLimit = 20;//A food source which could not be improved through limit trials is abandoned by its employed bee
+const int stringMaxCycle = 50;//The number of cycles for search
+
+const int stringD = 20;//The number of parameters of the problem to be optimized
+int stringLb ;//lower bounds of the parameters
+int stringUb ;//upper bound of the parameters
+double stringResult[stringMaxCycle] = { 0 };
+
+int varX = 0; int varY = 0; int varZ;
 
 enum VirtualRingRoutingTimers {
-	START_ROUND = 1,	
+	// HELLO_WORLD = 0,  // Hello world timer
+	DISCOVERY_ROUND = 1, // START_ROUND = 1,	
 	SEND_ADV = 2,	
 	JOIN_CH = 3,		
 	MAKE_TDMA = 4,			
@@ -46,6 +66,14 @@ enum VirtualRingRoutingTimers {
 	END_SLOT = 6,
 	DELAY_BETWEEN_PACKETS = 7,	// XXX-albarc
 	COUNTER_ENERGY_MONITORING = 8,	// XXX-albarc
+};
+
+struct NeighborInfo // Structure of a neighbor node
+{
+	int src;
+	double rssi;
+	double residual; // the residual energy of the node
+	int location[3]; // x, y and z axis of the nodes
 };
 
 struct CHInfo
@@ -67,6 +95,7 @@ private:
 	double maxPower;
 	double sensibility;
 	double aggrConsumption;
+	double residualEnergy;  //The residual energy of the node
 	
 	double slotLength;
 	int clusterLength;
@@ -75,7 +104,9 @@ private:
 	double roundLength;
 	int roundNumber;
 	int dataSN;
+	double sinkRssi; //The RSSI of the BS in order to have an idea of the distance between node and the BS 
 	
+	bool isSinkNeighbor; // Boolean value to check if the node is a 1-hop neighbour of the Sink
 	bool isCH;
 	bool isSink;
 	bool isCt;
@@ -86,6 +117,8 @@ private:
 	queue <cPacket *> tempTXBuffer;
 	vector <int> clusterMembers;
 	list <CHInfo> CHcandidates;
+	
+	list <NeighborInfo> NeighborsTable; // List of Neighbors 
 
 	/* XXX-albarc Añadir slots extra para sources prioritarias */
 	int sizeSchedule;

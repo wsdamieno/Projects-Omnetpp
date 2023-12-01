@@ -59,6 +59,8 @@ class ResourceManager: public CastaliaModule {
 	void destroyNode(void);
 	int RamStore(int numBytes);
 	void RamFree(int numBytes);
+	// Function to get the remaining energy
+	double getRemainingEnergy(void);
 };
 
 #endif				// _RESOURCEGENERICMANAGER_H_

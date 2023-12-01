@@ -15,7 +15,7 @@
 //*             Claudio Silva <claudio.silva@itec.ufpa.br>                   *
 //****************************************************************************/
 
-package node.communication.routing.VirtualRingRouting;
+package node.communication.routing.virtualRingRouting;
 
 simple VirtualRingRouting like node.communication.routing.iRouting
 {
