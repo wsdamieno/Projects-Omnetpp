@@ -17,6 +17,13 @@
 
 #include "VirtualRingRouting.h"
 
+/* ABC Bee's functions */
+RingBeeGroup RingNectarSource[ringFoodNumber];
+RingBeeGroup RingEmployedBee[ringFoodNumber];
+RingBeeGroup RingOnLooker[ringFoodNumber];
+RingBeeGroup RingBestSource;//The best food source is memorized		
+/* End of ABC Bee's functions */
+
 Define_Module(VirtualRingRouting);
 
 void VirtualRingRouting::startup()
@@ -41,11 +48,13 @@ void VirtualRingRouting::startup()
 	isCH = false;
 	endFormClus = false;
 	isCt = false;
+	
 	// Virtual ring parameters
-	sinkRssi = 0;
+	sinkRssi = 0; // Initialize the distance to the Sink through the value of the rssi
 	NeighborsTable.clear();
+	RingMemberCandidates.clear();
+	//if (atoi(SELF_NETWORK_ADDRESS) == 0)	isSink = 1;  // Notify that the node is the Sink
 				
-	// residualEnergy = resMgrModule->getRemainingEnergy(); // to retrieve the residual energy of the node
 	// int rand();
 
 	/*--- Node location --- */
@@ -218,14 +227,6 @@ void VirtualRingRouting::fromMacLayer(cPacket *pkt, int macAddress, double rssi,
 
 	switch (netPacket->getVirtualRingRoutingPacketKind()) {
 		
-		/* The hello world packet sent by the Sink is received */
-		case HELLO_WORD_PACKET:{ 
-			// Wake up and start the Neighbor discovery 
-			sinkRssi = rssi ;
-			trace() << "Node : " << self << " receives hello packt from : " << macAddress << "with the RSSI :  " << rssi;
-			break;	
-		}
-		
 		case BROADCAST_PACKET:{ 
 			// Build the neighbor table "Neighbors"
 			NeighborInfo neighbor;
@@ -233,14 +234,52 @@ void VirtualRingRouting::fromMacLayer(cPacket *pkt, int macAddress, double rssi,
 			neighbor.rssi = rssi;
 			neighbor.residual = netPacket->getResidual();
 			neighbor.location[0] = netPacket->getLocation(0); neighbor.location[1] = netPacket->getLocation(1); neighbor.location[2] = netPacket->getLocation(2);
-			if ((atoi(netPacket->getSource()) == 0) && (self != 0 )) {
+			if ((atoi(netPacket->getSource()) == 0) && (self != 0 )) { // Verify that the sender is not the same node and is not the sink
 				isSinkNeighbor = 1;
+				sinkRssi = rssi;
 				trace() << "Node : " << self << " is a 1-hop neighbor of the sink node ";
 			}
 			NeighborsTable.push_back(neighbor);
 			trace() << "Node : " << self << " receives hello packt from : " << atoi(netPacket->getSource()) << " with the RSSI :  " << rssi << ", and there is :" << NeighborsTable.size() << " Inside the neighbor table";
 			// double timer = uniform (15.0, 18.0);
 			// setTimer(SEND_DATA_TO_SINK, timer); // Wait few seconds in order to receive the overall request
+			break;	
+		}
+		
+		case TO_SINK_PACKET:{
+		trace() << "During the round : " << roundNumber << ", the node: " << self << " receives data from : " <<  macAddress ;
+		RingMemberCandidates = NeighborsTable;
+			// reception of a packet to be sent up to the Sink (BS)
+			//string dst(netPacket->getDestination());
+			//string src(netPacket->getSource());
+			/*		
+			if (src.compare(SELF_NETWORK_ADDRESS) != 0 && isSink){
+				// The Sink node which is the final destination of packet receives from each node their information
+				stringNodeInfo node;
+				node.id = atoi(netPacket->getSource());
+				node.sinkRssi = netPacket->getSinkRssi();
+				node.residual = netPacket->getResidual();
+				node.location = netPacket->getLocation();
+				
+				list <StringNeighborInfo> neighbors;
+				
+				int j = 0;
+				while (netPacket->getNeighbors(j).id != NULL){
+					StringNeighborInfo neighbor;
+					neighbor.id = netPacket->getNeighbors(j).id;
+					neighbor.rssi = netPacket->getNeighbors(j).rssi;
+					neighbor.residual = netPacket->getNeighbors(j).residual;
+					neighbor.location = netPacket->getNeighbors(j).location;
+					neighbors.push_back(neighbor);
+					j++ ;
+				}
+				node.NeighborsTable = neighbors; 
+				stringNodesInfo.push_back(node);
+				trace() << "During the round : " << roundNumber << ", the Sink node (CH): " << self << " receives data from : " <<  macAddress ;
+				double timer = uniform(30.0, 35.0);
+				setTimer(ABC_COMPUTATION, timer); // Wait few seconds in order to receive the overall request			
+			}
+			*/
 			break;	
 		}
 		
@@ -425,35 +464,18 @@ void VirtualRingRouting::fromMacLayer(cPacket *pkt, int macAddress, double rssi,
 void VirtualRingRouting::timerFiredCallback(int index)
 {
 	switch (index) {
-		/*
-		case HELLO_WORLD:{	
-			// Sink node send hello word to nodes in order to start the discory round
-					
-			VirtualRingRoutingPacket *helloPkt = new VirtualRingRoutingPacket("Hello Word Packet, I'm the sink node", NETWORK_LAYER_PACKET);
-			
-			helloPkt->setByteLength(advPacketSize);
-			helloPkt->setVirtualRingRoutingPacketKind(HELLO_WORLD);
-			helloPkt->setSource(SELF_NETWORK_ADDRESS);
-			helloPkt->setDestination(BROADCAST_NETWORK_ADDRESS);
-			toMacLayer(helloPkt, BROADCAST_MAC_ADDRESS);
-			
-			//setTimer(HELLO_WORLD, 2.0);
-			if (getTimer(HELLO_WORLD) != 0) {
-					cancelTimer(HELLO_WORLD);
-			}	
-			break;
-		}
-		*/
+		
 		case DISCOVERY_ROUND:{	
 			// Broadcasts hello_world packet
 			trace() << "---- The discovery Start ----";
 			// stringClusterHeadSet.clear();
 			// stringMemberFollowers.clear();
 			// ringMembers.clear();
-			VirtualRingRoutingDscvPacket *brdcstPkt = new VirtualRingRoutingDscvPacket("Broadcast initialisation Packet", NETWORK_LAYER_PACKET);
+			VirtualRingRoutingDscvPacket *brdcstPkt = new VirtualRingRoutingDscvPacket("World discovery packet", NETWORK_LAYER_PACKET);
 			brdcstPkt->setByteLength(advPacketSize);
 			brdcstPkt->setVirtualRingRoutingPacketKind(BROADCAST_PACKET);
 			brdcstPkt->setSource(SELF_NETWORK_ADDRESS);
+			brdcstPkt->setMoisture(uniform (0.0, 100.0));
 			brdcstPkt->setDestination(BROADCAST_NETWORK_ADDRESS);
 			brdcstPkt->setResidual(resourceModule->getRemainingEnergy()); // Residual energy of the node (Must be ok)
 			brdcstPkt->setLocation(0,varX); // X Location of the node
@@ -465,8 +487,68 @@ void VirtualRingRouting::timerFiredCallback(int index)
 			trace() << "Node " << self << " sends the broadcast packet for the neighbor discovery ";
 			trace () << "Node : " << self << " Current round " << roundNumber;
 			
+			double timer = uniform (0.45, 0.47); // Wait before start SEND_DATA_TO_SINK
+			setTimer(SEND_DATA_TO_SINK, timer);
+			
 			if (getTimer(DISCOVERY_ROUND) != 0) {
 					cancelTimer(DISCOVERY_ROUND);
+			}
+			break;
+		}
+		
+		case SEND_DATA_TO_SINK:{	
+		
+			/* Only the number whtich are the neighbor of the sink can execute this part */
+			if ((!isSink) && (isSinkNeighbor)) { // the node is not the sink and is the neighbor of the sink node
+			
+				VirtualRingRoutingSinkPacket *dataPkt = new VirtualRingRoutingSinkPacket("World discovery packet", NETWORK_LAYER_PACKET);
+				
+				dataToSinkPacketSize = advPacketSize + NeighborsTable.size(); // The size of the packet depends on the size of the neighbors table
+				dataPkt->setNeighborsArraySize(NeighborsTable.size());
+				dataPkt->setByteLength(dataToSinkPacketSize);
+				dataPkt->setVirtualRingRoutingPacketKind(TO_SINK_PACKET);
+				dataPkt->setSource(SELF_NETWORK_ADDRESS);
+				dataPkt->setDestination(SINK_NETWORK_ADDRESS);
+				dataPkt->setSinkRssi(sinkRssi);
+				dataPkt->setResidual(resourceModule->getRemainingEnergy()); // Residual energy
+				dataPkt->setMoisture(uniform (0.0, 100.0)); // the moisture level is a random value between 0 and 100 (in percent)
+				dataPkt->setLocation(0,varX); // X Location of the node
+				dataPkt->setLocation(1,varY); // Y Location of the node 			
+				dataPkt->setLocation(2,uniform(0.0, 0.40)); // Location of the node (burial depth) randomly between the ground surface and 40cm depth
+				
+				// Construction of the neighbor table
+				int i = 0;
+				for (list <NeighborInfo>::iterator it = NeighborsTable.begin(); it != NeighborsTable.end(); it++) {
+						//NeighborInfo Neighborpkt;
+						NeighborPktInfo Neighborpkt;
+						Neighborpkt.src = (*it).src;
+						Neighborpkt.rssi = (*it).rssi;
+						Neighborpkt.residual = (*it).residual;
+						Neighborpkt.location[0] = (*it).location[0];
+						Neighborpkt.location[1] = (*it).location[1];
+						Neighborpkt.location[2] = (*it).location[2];
+						dataPkt->setNeighbors(i, Neighborpkt);
+						i++;
+				}
+				
+				// Send data packet to the SINK NODE*/ 
+				toMacLayer(dataPkt, atoi(SINK_NETWORK_ADDRESS));
+				// stringNeighborsTable.clear(); 
+				trace() << "Node " << self << " is allowed to send data to sink and the size of the data packet is: " << dataToSinkPacketSize;
+			} else {
+					if (!isSink)
+						trace() << "Node " << self << " is not a neighboor of the sink, must go into sleep mode HERE ! " ;
+			}
+			/*
+			if (isSink) {
+				trace() << "Sink node : " << self << " has : "<< stringNeighborsTable.size() << " Neighbors " ;
+				for (list <StringNeighborInfo>::iterator it = stringNeighborsTable.begin(); it != stringNeighborsTable.end(); it++)
+					trace() << "Sink neighbor : " << (*it).id ;
+			}
+			*/
+			//setTimer(DISCOVERY_ROUND, 300.0);	
+			if (getTimer(SEND_DATA_TO_SINK) != 0) {
+					cancelTimer(SEND_DATA_TO_SINK);
 			}
 			break;
 		}	
@@ -875,6 +957,66 @@ void VirtualRingRouting::readXMLparams()
 bool cmpRingRssi(CHInfo a, CHInfo b){
 	return (a.rssi > b.rssi);
 }
+
+/****  ABC functions implementation  ****/ 
+double virtualRingRandom(double start, double end){
+	return start + (end - start)*rand() / (RAND_MAX + 1.0);
+}
+
+void virtualRingInitilize() {
+	int i, j, temp;
+	for (i = 0;i<ringFoodNumber;i++){
+		for (j = 0;j<ringD;j++){
+			bool exist = true;
+			while (exist){
+			//initialized food matrix FoodNumber*D and fulled with random values
+				int id = virtualRingRandom(ringLb, ringUb);
+				list <NeighborInfo>::iterator it = RingMemberCandidates.begin();
+				advance(it, id);
+				temp = 	(*it).src;		
+				exist = ringAlreadyExist(RingNectarSource[i].code, temp, ringD);
+			}
+			RingNectarSource[i].code[j] = temp ; //random(lb, ub);
+			
+			RingEmployedBee[i].code[j] = RingNectarSource[i].code[j];
+			RingOnLooker[i].code[j] = RingNectarSource[i].code[j];
+			RingBestSource.code[j] = RingNectarSource[0].code[j];
+		}
+			
+		//initialized the food
+		// RingNectarSource[i].trueFit = ringCalculationTruefit(RingNectarSource[i]);
+		// RingNectarSource[i].fitness = ringCalculationFitness(RingNectarSource[i].trueFit);
+		RingNectarSource[i].rfitness = 0;
+		RingNectarSource[i].trail = 0;
+		//initialized the employed
+		RingEmployedBee[i].trueFit = RingNectarSource[i].trueFit;
+		RingEmployedBee[i].fitness = RingNectarSource[i].fitness;
+		RingEmployedBee[i].rfitness = RingNectarSource[i].rfitness;
+		RingEmployedBee[i].trail = RingNectarSource[i].trail;
+		//initialized the onlooker
+		RingOnLooker[i].trueFit = RingNectarSource[i].trueFit;
+		RingOnLooker[i].fitness = RingNectarSource[i].fitness;
+		RingOnLooker[i].rfitness = RingNectarSource[i].rfitness;
+		RingOnLooker[i].trail = RingNectarSource[i].trail;
+	}
+	
+	//initialized the best food
+	RingBestSource.trueFit = RingNectarSource[0].trueFit;
+	RingBestSource.fitness = RingNectarSource[0].fitness;
+	RingBestSource.rfitness = RingNectarSource[0].rfitness;
+	RingBestSource.trail = RingNectarSource[0].trail;
+}
+
+bool ringAlreadyExist(int T[],int valeurATrouver, int lenght) {
+	for (int i=0;i<lenght;i++) {
+		if (T[i]==valeurATrouver) {
+	  	return true;
+		}
+	}	
+	return false;
+}
+/****  End of ABC ****/ 
+
 
 void VirtualRingRouting::finishSpecific() {
 	// Solo se guardan del sink, porque como CastaliaResults saca la media por defecto

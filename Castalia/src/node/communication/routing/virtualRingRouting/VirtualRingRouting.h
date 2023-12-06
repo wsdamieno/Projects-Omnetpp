@@ -44,22 +44,35 @@
 using namespace std;
 // using namespace std::experimental;
 
-const int stringNP = 300;//The number of colony size (employed bees+onlooker bees)
-const int stringFoodNumber = stringNP / 2;//The number of food sources equals the half of the colony size
-const int stringLimit = 20;//A food source which could not be improved through limit trials is abandoned by its employed bee
-const int stringMaxCycle = 50;//The number of cycles for search
+/****** ABC parameters ******/
+const int ringNP = 300;//The number of colony size (employed bees+onlooker bees)
+const int ringFoodNumber = ringNP/2;//The number of food sources equals the half of the colony size
+const int ringLimit = 20;//A food source which could not be improved through limit trials is abandoned by its employed bee
+const int ringMaxCycle = 50;//The number of cycles for search
+const int ringD = 20;//The number of parameters of the problem to be optimized
+int ringLb ;//lower bounds of the parameters
+int ringUb ;//upper bound of the parameters
+double ringResult[ringMaxCycle] = { 0 };
 
-const int stringD = 20;//The number of parameters of the problem to be optimized
-int stringLb ;//lower bounds of the parameters
-int stringUb ;//upper bound of the parameters
-double stringResult[stringMaxCycle] = { 0 };
+bool ringAlreadyExist(int T[],int valeurATrouver, int lenght);
 
-int varX = 0; int varY = 0; int varZ;
+// Structure of Bees
+//struct of Bees
+struct RingBeeGroup
+{
+	int code[ringD];//the number of weights and bias is D
+	double trueFit;// objective function value
+	double fitness;//fitness is a vector holding fitness (quality) values associated with food sources
+	double rfitness;//a vector holding probabilities of food sources (solutions) to be chosen
+	int trail;//trial is a vector holding trial numbers through which solutions can not be improved
+}RingBee[ringFoodNumber];
+
+/****** End of ABC parameters ******/
 
 enum VirtualRingRoutingTimers {
-	// HELLO_WORLD = 0,  // Hello world timer
 	DISCOVERY_ROUND = 1, // START_ROUND = 1,	
-	SEND_ADV = 2,	
+	SEND_DATA_TO_SINK = 2, // Send the neighbour table to the sink node (only node which are neighbors of the sink) 
+	SEND_ADV = 9,	
 	JOIN_CH = 3,		
 	MAKE_TDMA = 4,			
 	START_SLOT = 5,	
@@ -82,6 +95,8 @@ struct CHInfo
 	double rssi;
 };
 
+list <NeighborInfo> RingMemberCandidates;
+
 class VirtualRingRouting : public VirtualRouting {
 
 private:
@@ -91,11 +106,13 @@ private:
 	int tdmaPacketSize;
 	int dataPacketSize;
 	int joinPacketSize;
+	
+	// data to send the data to the sink
+	int dataToSinkPacketSize;
 
 	double maxPower;
 	double sensibility;
 	double aggrConsumption;
-	double residualEnergy;  //The residual energy of the node
 	
 	double slotLength;
 	int clusterLength;
@@ -104,11 +121,13 @@ private:
 	double roundLength;
 	int roundNumber;
 	int dataSN;
-	double sinkRssi; //The RSSI of the BS in order to have an idea of the distance between node and the BS 
-	
+		
 	bool isSinkNeighbor; // Boolean value to check if the node is a 1-hop neighbour of the Sink
+	double sinkRssi; // The RSSI of the Sink in order to have an idea of the distance between node and the BS 
+	int varX; int varY; int varZ; // Localisation parameter of the node
+	bool isSink; 
+	
 	bool isCH;
-	bool isSink;
 	bool isCt;
 	bool endFormClus;
 
@@ -118,7 +137,8 @@ private:
 	vector <int> clusterMembers;
 	list <CHInfo> CHcandidates;
 	
-	list <NeighborInfo> NeighborsTable; // List of Neighbors 
+	list <NeighborInfo> NeighborsTable; // The table of Neighbors (1-hop)
+	list <NeighborInfo> RingMemberCandidates; // List of the list of ring member candidate
 
 	/* XXX-albarc Añadir slots extra para sources prioritarias */
 	int sizeSchedule;
@@ -196,5 +216,20 @@ protected:
 
 };
 bool cmpRingRssi(CHInfo a, CHInfo b);
+
+// ABC funtions
+double virtualRingRandom(double, double);
+void virtualRingInitilize();
+double ringCalculationFitness(double);
+double ringCalculationTruefit(RingBeeGroup);
+/*
+void EmployedBees();
+void OnlookerBees();
+void ScoutBees();
+void StringMemorizeBestSource();
+
+
+void stringCalculateProbabilities();
+*/
 
 #endif			
